@@ -1,14 +1,12 @@
 //! `uniclaw-verify` — the standalone receipt verifier.
 //!
-//! One job: take a receipt (JSON), verify its Ed25519 signature against the
-//! embedded issuer public key, and report pass/fail.
-//!
-//! No dependency on the Uniclaw kernel. Distributable on its own so anyone
-//! can verify a receipt cold.
+//! One job: take a receipt (JSON), verify its Ed25519 signature, and report
+//! pass/fail. All cryptographic logic lives in `uniclaw-receipt::crypto`; this
+//! binary is just a thin CLI wrapper, kept tiny so anyone can install it
+//! without pulling in the kernel.
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use clap::Parser;
-use ed25519_dalek::{Verifier, VerifyingKey};
 use uniclaw_receipt::Receipt;
 
 /// Verify a Uniclaw receipt.
@@ -29,7 +27,7 @@ fn main() -> Result<()> {
     let bytes = read_input(&cli.receipt).context("read receipt input")?;
     let receipt: Receipt = serde_json::from_slice(&bytes).context("parse receipt JSON")?;
 
-    verify(&receipt).context("verify receipt")?;
+    uniclaw_receipt::crypto::verify(&receipt).context("verify receipt")?;
 
     println!("ok: receipt {} verified", hex(&receipt.content_id().0));
 
@@ -50,28 +48,6 @@ fn read_input(path: &str) -> Result<Vec<u8>> {
     } else {
         std::fs::read(path).map_err(Into::into)
     }
-}
-
-/// Verify the Ed25519 signature on the receipt body.
-fn verify(receipt: &Receipt) -> Result<()> {
-    let body_bytes = serde_json::to_vec(&receipt.body)?;
-
-    let key = VerifyingKey::from_bytes(&receipt.issuer.0).context("invalid issuer public key")?;
-
-    let signature = ed25519_dalek::Signature::from_bytes(&receipt.signature.0);
-
-    key.verify(&body_bytes, &signature)
-        .map_err(|e| anyhow::anyhow!("signature verification failed: {e}"))?;
-
-    if receipt.version != uniclaw_receipt::RECEIPT_FORMAT_VERSION {
-        bail!(
-            "unsupported receipt version {} (this verifier supports {})",
-            receipt.version,
-            uniclaw_receipt::RECEIPT_FORMAT_VERSION
-        );
-    }
-
-    Ok(())
 }
 
 fn hex(bytes: &[u8]) -> String {

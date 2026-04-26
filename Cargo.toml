@@ -20,7 +20,7 @@ categories = ["command-line-utilities", "cryptography"]
 [workspace.dependencies]
 # Crypto + encoding (kept tiny — verifier must stay ≤ 200 LOC equivalent).
 blake3 = { version = "1.5", default-features = false }
-ed25519-dalek = { version = "2.1", default-features = false, features = ["std"] }
+ed25519-dalek = { version = "2.1", default-features = false, features = ["std", "fast"] }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 
@@ -54,6 +54,20 @@ lto = "fat"
 codegen-units = 1
 strip = true
 panic = "abort"
+
+# Crypto deps must compile with full optimization or Ed25519 verify slows ~30x.
+# (Size discipline still applies to our own crates and most deps.)
+[profile.release.package.ed25519-dalek]
+opt-level = 3
+
+[profile.release.package.curve25519-dalek]
+opt-level = 3
+
+[profile.release.package.sha2]
+opt-level = 3
+
+[profile.release.package.blake3]
+opt-level = 3
 
 # Faster builds for development without sacrificing release discipline.
 [profile.release-fast]

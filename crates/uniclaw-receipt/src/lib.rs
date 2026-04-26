@@ -3,9 +3,9 @@
 //! A receipt is a signed, verifiable record that an agent action occurred.
 //! Receipts are addressable by their content hash: `uniclaw://receipt/<hash>`.
 //!
-//! This crate is intentionally small. Signing and verification logic lives in
-//! `uniclaw-verify` so that the verifier remains a tiny standalone binary that
-//! anyone can install without pulling in the kernel.
+//! Type definitions are always available. Cryptographic signing and verifying
+//! helpers live behind the `crypto` feature so this crate stays tiny when only
+//! the wire format is needed.
 //!
 //! Receipt format spec: see `RFCS/0001-receipt-format.md`.
 
@@ -225,6 +225,84 @@ mod hex_array_64 {
     }
 }
 
+// --- crypto helpers (feature-gated) ---
+
+/// Errors that can occur while verifying a receipt's signature.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VerifyError {
+    /// Issuer public key did not parse as a valid Ed25519 key.
+    InvalidIssuerKey,
+    /// Signature did not match the body under the issuer key.
+    SignatureMismatch,
+    /// Wire-format version is not understood by this verifier.
+    UnsupportedVersion { found: u32, expected: u32 },
+    /// Body could not be canonically encoded for verification.
+    EncodingFailed,
+}
+
+impl core::fmt::Display for VerifyError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidIssuerKey => f.write_str("invalid issuer public key"),
+            Self::SignatureMismatch => f.write_str("signature did not verify"),
+            Self::UnsupportedVersion { found, expected } => {
+                write!(
+                    f,
+                    "unsupported receipt version {found} (verifier supports {expected})"
+                )
+            }
+            Self::EncodingFailed => f.write_str("could not canonically encode receipt body"),
+        }
+    }
+}
+
+impl core::error::Error for VerifyError {}
+
+/// Ed25519 signing and verifying helpers. Enable with the `crypto` feature.
+#[cfg(any(feature = "crypto", test))]
+pub mod crypto {
+    use super::{PublicKey, RECEIPT_FORMAT_VERSION, Receipt, ReceiptBody, Signature, VerifyError};
+    use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
+
+    /// Sign a receipt body with the given Ed25519 key.
+    ///
+    /// The signature covers the canonical JSON encoding of `body`.
+    #[must_use]
+    pub fn sign(body: ReceiptBody, signing_key: &SigningKey) -> Receipt {
+        let body_bytes = serde_json::to_vec(&body).expect("canonical body must encode");
+        let sig = signing_key.sign(&body_bytes);
+        Receipt {
+            version: RECEIPT_FORMAT_VERSION,
+            body,
+            issuer: PublicKey(signing_key.verifying_key().to_bytes()),
+            signature: Signature(sig.to_bytes()),
+        }
+    }
+
+    /// Verify a receipt's Ed25519 signature against its embedded issuer key.
+    ///
+    /// Also checks that the wire-format version is one this build understands.
+    pub fn verify(receipt: &Receipt) -> Result<(), VerifyError> {
+        if receipt.version != RECEIPT_FORMAT_VERSION {
+            return Err(VerifyError::UnsupportedVersion {
+                found: receipt.version,
+                expected: RECEIPT_FORMAT_VERSION,
+            });
+        }
+
+        let body_bytes =
+            serde_json::to_vec(&receipt.body).map_err(|_| VerifyError::EncodingFailed)?;
+
+        let key = VerifyingKey::from_bytes(&receipt.issuer.0)
+            .map_err(|_| VerifyError::InvalidIssuerKey)?;
+
+        let signature = ed25519_dalek::Signature::from_bytes(&receipt.signature.0);
+
+        key.verify(&body_bytes, &signature)
+            .map_err(|_| VerifyError::SignatureMismatch)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,5 +367,63 @@ mod tests {
         let mut b = a.clone();
         b.signature = Signature([3u8; 64]);
         assert_eq!(a.content_id(), b.content_id());
+    }
+
+    mod crypto_tests {
+        use super::*;
+        use ed25519_dalek::SigningKey;
+
+        fn key() -> SigningKey {
+            SigningKey::from_bytes(&[7u8; 32])
+        }
+
+        #[test]
+        fn sign_then_verify_roundtrips() {
+            let receipt = crate::crypto::sign(sample_body(), &key());
+            crate::crypto::verify(&receipt).expect("freshly signed receipt must verify");
+        }
+
+        #[test]
+        fn tampered_body_fails_verification() {
+            let mut receipt = crate::crypto::sign(sample_body(), &key());
+            // Mutate the action target after signing — signature was over the original.
+            receipt.body.action.target = "https://evil.example.com/".into();
+            assert_eq!(
+                crate::crypto::verify(&receipt),
+                Err(crate::VerifyError::SignatureMismatch),
+            );
+        }
+
+        #[test]
+        fn tampered_signature_fails_verification() {
+            let mut receipt = crate::crypto::sign(sample_body(), &key());
+            receipt.signature.0[0] ^= 0xff;
+            assert_eq!(
+                crate::crypto::verify(&receipt),
+                Err(crate::VerifyError::SignatureMismatch),
+            );
+        }
+
+        #[test]
+        fn wrong_issuer_fails_verification() {
+            let mut receipt = crate::crypto::sign(sample_body(), &key());
+            // Replace issuer with the public half of a different signing key.
+            let other = SigningKey::from_bytes(&[9u8; 32]);
+            receipt.issuer = PublicKey(other.verifying_key().to_bytes());
+            assert_eq!(
+                crate::crypto::verify(&receipt),
+                Err(crate::VerifyError::SignatureMismatch),
+            );
+        }
+
+        #[test]
+        fn unsupported_version_is_rejected() {
+            let mut receipt = crate::crypto::sign(sample_body(), &key());
+            receipt.version = u32::MAX;
+            assert!(matches!(
+                crate::crypto::verify(&receipt),
+                Err(crate::VerifyError::UnsupportedVersion { .. }),
+            ));
+        }
     }
 }

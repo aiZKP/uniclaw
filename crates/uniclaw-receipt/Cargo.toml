@@ -12,10 +12,19 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+# `crypto` enables Ed25519 signing and verification helpers.
+# Off by default so the type-only crate stays minimal.
+crypto = ["dep:ed25519-dalek"]
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
 blake3.workspace = true
+ed25519-dalek = { workspace = true, optional = true }
+
+[dev-dependencies]
+ed25519-dalek = { workspace = true }
 
 [lints]
 workspace = true

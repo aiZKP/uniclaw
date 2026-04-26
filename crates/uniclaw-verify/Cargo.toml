@@ -17,13 +17,15 @@ name = "uniclaw-verify"
 path = "src/main.rs"
 
 [dependencies]
-uniclaw-receipt.workspace = true
-serde.workspace = true
+uniclaw-receipt = { workspace = true, features = ["crypto"] }
 serde_json.workspace = true
-blake3.workspace = true
-ed25519-dalek.workspace = true
 clap.workspace = true
 anyhow.workspace = true
+
+[dev-dependencies]
+ed25519-dalek = { workspace = true }
+serde_json.workspace = true
+uniclaw-receipt = { workspace = true, features = ["crypto"] }
 
 [lints]
 workspace = true
