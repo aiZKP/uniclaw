@@ -1,0 +1,8 @@
+# Cargo aliases for common discipline tasks.
+
+[alias]
+ci = "build --profile ci --workspace --all-targets"
+ci-test = "test --profile ci --workspace"
+ci-lint = "clippy --workspace --all-targets -- -D warnings"
+ci-fmt = "fmt --all -- --check"
+size = "build --profile dist --workspace"

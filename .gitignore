@@ -1,0 +1,40 @@
+# Rust
+/target
+**/target
+**/*.rs.bk
+*.pdb
+
+# Editors / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Local env
+.env
+.env.local
+.envrc.local
+
+# Benchmark output (per project policy: benchmarks run locally, results not committed)
+/bench-results/
+**/criterion/
+**/*.bench.json
+**/*.bench.txt
+flamegraph.svg
+perf.data
+perf.data.old
+*.profraw
+
+# cargo-bloat / cargo-size scratch
+/.size-budget-cache/
+
+# Coverage
+*.profdata
+/coverage/
+/lcov.info
+
+# Local artifacts
+*.log
+/scratch/

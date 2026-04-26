@@ -1,0 +1,21 @@
+[package]
+name = "uniclaw-receipt"
+description = "Receipt format types for the Uniclaw verifiable agent runtime."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+blake3.workspace = true
+
+[lints]
+workspace = true

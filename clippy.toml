@@ -1,0 +1,5 @@
+# Discipline: small kernel, deliberate complexity.
+cognitive-complexity-threshold = 25
+type-complexity-threshold = 250
+too-many-arguments-threshold = 6
+too-many-lines-threshold = 200
